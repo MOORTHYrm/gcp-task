@@ -118,13 +118,14 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: read
-      issues: write           # required if issue_title is used
+      issues: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create ZAP rules file
+      - name: Prepare ZAP workspace permissions
         run: |
           mkdir -p .zap
+          touch zap.yaml && chmod a+w zap.yaml
           cat > .zap/rules.tsv << 'EOF'
           10015	IGNORE	(Re-examine Cache-control Directives)
           10035	IGNORE	(Strict-Transport-Security Header Not Set)
@@ -139,7 +140,7 @@ jobs:
           rules_file_name: ".zap/rules.tsv"
           cmd_options: "-a"
           fail_action: false
-          issue_title: ""     # disables GitHub issue creation
+          issue_title: ""
 
       - name: Upload ZAP report
         if: always()
