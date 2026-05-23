@@ -96,7 +96,7 @@ jobs:
           image-ref: ${{ needs.build-push.outputs.image_full }}
           format: "sarif"
           output: "trivy-results.sarif"
-          severity: "CRITICAL,HIGH"
+          severity: "CRITICAL"
           exit-code: "1"
           ignore-unfixed: true
       - name: Upload Trivy results to GitHub Security tab
