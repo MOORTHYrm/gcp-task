@@ -142,7 +142,7 @@ jobs:
           fail_action: false
           issue_title: "ZAP Baseline Scan Report"
           token: ${{ secrets.GITHUB_TOKEN }}
-          artifact_name: "zap-report"
+          artifact_name: "zapreport"
 
       - name: Upload ZAP report
         if: always()
