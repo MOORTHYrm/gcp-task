@@ -140,7 +140,8 @@ jobs:
           rules_file_name: ".zap/rules.tsv"
           cmd_options: "-a"
           fail_action: false
-          issue_title: ""
+          issue_title: "ZAP Baseline Scan Report"
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload ZAP report
         if: always()
