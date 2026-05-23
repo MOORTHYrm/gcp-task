@@ -9,7 +9,7 @@ def home():
     return jsonify(
         {
             "message": "Welcome to GCP Python App",
-            "version": "1.0.0",
+            "version": "2.0.0",
             "environment": os.getenv("ENV", "production"),
         }
     )
