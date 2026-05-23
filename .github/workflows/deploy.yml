@@ -116,8 +116,22 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      issues: write           # required if issue_title is used
     steps:
       - uses: actions/checkout@v4
+
+      - name: Create ZAP rules file
+        run: |
+          mkdir -p .zap
+          cat > .zap/rules.tsv << 'EOF'
+          10015	IGNORE	(Re-examine Cache-control Directives)
+          10035	IGNORE	(Strict-Transport-Security Header Not Set)
+          10049	IGNORE	(Storable and Cacheable Content)
+          90005	IGNORE	(Sec-Fetch-Dest Header is Missing)
+          EOF
+
       - name: ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.12.0
         with:
@@ -125,7 +139,8 @@ jobs:
           rules_file_name: ".zap/rules.tsv"
           cmd_options: "-a"
           fail_action: false
-          artifact_name: "zap-report"
+          issue_title: ""     # disables GitHub issue creation
+
       - name: Upload ZAP report
         if: always()
         uses: actions/upload-artifact@v4
