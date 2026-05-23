@@ -1,5 +1,4 @@
 name: Build & Deploy to GKE
-
 on:
   push:
     branches: [main]
@@ -32,76 +31,201 @@ jobs:
       - run: pip install -r requirements.txt flake8
       - run: flake8 app.py --max-line-length=120 --ignore=E501
 
+  gitleaks:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
   build-push:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, gitleaks]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     outputs:
       image_tag: ${{ steps.meta.outputs.tag }}
+      image_full: ${{ steps.meta.outputs.image_full }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_EMAIL }}
-
       - uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
-
       - run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
-
       - name: Generate image tag
         id: meta
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE_FULL="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${SHORT_SHA}"
           echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
-
+          echo "image_full=${IMAGE_FULL}" >> $GITHUB_OUTPUT
       - name: Build & Push
         run: |
           docker build \
-            --tag "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ steps.meta.outputs.tag }}" \
+            --tag "${{ steps.meta.outputs.image_full }}" \
             --tag "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:latest" .
-          docker push "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ steps.meta.outputs.tag }}"
+          docker push "${{ steps.meta.outputs.image_full }}"
           docker push "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:latest"
 
-  deploy:
-    name: Deploy to GKE
+  trivy:
+    name: Trivy Image Scan
     runs-on: ubuntu-latest
     needs: build-push
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-      - uses: actions/checkout@v4
-
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_EMAIL }}
+      - run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ needs.build-push.outputs.image_full }}
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+          ignore-unfixed: true
+      - name: Upload Trivy results to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-results.sarif"
 
+  deploy:
+    name: Deploy to GKE
+    runs-on: ubuntu-latest
+    needs: trivy
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
       - uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
-
       - uses: google-github-actions/get-gke-credentials@v2
         with:
           cluster_name: ${{ env.GKE_CLUSTER }}
           location: ${{ env.GKE_ZONE }}
           project_id: ${{ env.PROJECT_ID }}
-
       - name: Deploy
         run: |
-          IMAGE_FULL="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ needs.build-push.outputs.image_tag }}"
+          IMAGE_FULL="${{ needs.build-push.outputs.image_full }}"
           sed -i "s|image:.*python-app.*|image: ${IMAGE_FULL}|g" k8s/deployment.yaml
           kubectl apply -f k8s/service.yaml
           kubectl apply -f k8s/deployment.yaml
           kubectl apply -f k8s/ingress.yaml
           kubectl rollout status deployment/python-app --timeout=300s
-
       - name: Verify
         run: |
           kubectl get pods -l app=python-app
           kubectl get ingress python-app-ingress
+
+  owasp-zap:
+    name: OWASP ZAP DAST Scan
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: "https://devopstrends.online/"
+          rules_file_name: ".zap/rules.tsv"
+          cmd_options: "-a"
+          fail_action: false
+          artifact_name: "zap-report"
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: report_html.html
+
+  slack-notify:
+    name: Slack Notification
+    runs-on: ubuntu-latest
+    needs: [deploy, owasp-zap]
+    if: |
+      always() &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push'
+    steps:
+      - name: Determine pipeline status
+        id: status
+        run: |
+          if [[ "${{ needs.deploy.result }}" == "success" && "${{ needs.owasp-zap.result }}" != "failure" ]]; then
+            echo "color=#36a64f" >> $GITHUB_OUTPUT
+            echo "icon=:white_check_mark:" >> $GITHUB_OUTPUT
+            echo "text=Pipeline succeeded" >> $GITHUB_OUTPUT
+          else
+            echo "color=#e01e5a" >> $GITHUB_OUTPUT
+            echo "icon=:x:" >> $GITHUB_OUTPUT
+            echo "text=Pipeline failed" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {
+              "attachments": [
+                {
+                  "color": "${{ steps.status.outputs.color }}",
+                  "blocks": [
+                    {
+                      "type": "header",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "${{ steps.status.outputs.icon }} ${{ steps.status.outputs.text }}"
+                      }
+                    },
+                    {
+                      "type": "section",
+                      "fields": [
+                        { "type": "mrkdwn", "text": "*Repo:*\n${{ github.repository }}" },
+                        { "type": "mrkdwn", "text": "*Branch:*\n${{ github.ref_name }}" },
+                        { "type": "mrkdwn", "text": "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>" },
+                        { "type": "mrkdwn", "text": "*Actor:*\n${{ github.actor }}" },
+                        { "type": "mrkdwn", "text": "*Test:*\n${{ needs.test.result || 'skipped' }}" },
+                        { "type": "mrkdwn", "text": "*Gitleaks:*\n${{ needs.gitleaks.result || 'skipped' }}" },
+                        { "type": "mrkdwn", "text": "*Trivy:*\n${{ needs.trivy.result || 'skipped' }}" },
+                        { "type": "mrkdwn", "text": "*Deploy:*\n${{ needs.deploy.result || 'skipped' }}" },
+                        { "type": "mrkdwn", "text": "*OWASP ZAP:*\n${{ needs.owasp-zap.result || 'skipped' }}" }
+                      ]
+                    },
+                    {
+                      "type": "actions",
+                      "elements": [
+                        {
+                          "type": "button",
+                          "text": { "type": "plain_text", "text": "View Run" },
+                          "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
