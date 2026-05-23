@@ -1,0 +1,53 @@
+# Google Managed SSL Certificate
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: python-app-cert
+  namespace: default
+spec:
+  domains:
+    - devopstrends.online
+    - www.devopstrends.online
+---
+# GKE Ingress (Google Cloud Load Balancer)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: python-app-ingress
+  namespace: default
+  annotations:
+    # Use the static IP created by Terraform
+    kubernetes.io/ingress.global-static-ip-name: "python-app-lb-ip"
+    # Attach the managed TLS certificate
+    networking.gke.io/managed-certificates: "python-app-cert"
+    # Force HTTPS redirect
+    kubernetes.io/ingress.allow-http: "false"
+    # Link BackendConfig for health checks
+    beta.cloud.google.com/backend-config: '{"default": "python-app-backendconfig"}'
+spec:
+  defaultBackend:
+    service:
+      name: python-app-service
+      port:
+        number: 80
+  rules:
+    - host: devopstrends.online
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: python-app-service
+                port:
+                  number: 80
+    - host: www.devopstrends.online
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: python-app-service
+                port:
+                  number: 80
