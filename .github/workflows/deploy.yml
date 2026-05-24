@@ -149,12 +149,70 @@ jobs:
           git push origin main
 
 # ──────────────────────────────────────────────────────────────────────────────
-# JOB 4 — Helm Lint
+# JOB 4 — Trivy Image Scan (HIGH & CRITICAL only)
+# ──────────────────────────────────────────────────────────────────────────────
+  trivy-scan:
+    name: Trivy Image Scan
+    runs-on: ubuntu-latest
+    needs: build-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      id-token: write
+      security-events: write   # required to upload SARIF to GitHub Security tab
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Pull image for scanning
+        run: docker pull "${{ needs.build-push.outputs.image_full }}"
+
+      # ── Fail the job if any HIGH or CRITICAL CVEs are found ──────────────
+      - name: Trivy scan — exit on HIGH/CRITICAL
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ needs.build-push.outputs.image_full }}
+          format: table
+          exit-code: "1"              # non-zero = block the pipeline
+          ignore-unfixed: true        # skip vulns with no available fix
+          severity: HIGH,CRITICAL     # only care about HIGH and CRITICAL
+          vuln-type: os,library
+
+      # ── Always upload a SARIF report to GitHub Security tab ──────────────
+      - name: Trivy scan — SARIF report (always)
+        if: always()
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ needs.build-push.outputs.image_full }}
+          format: sarif
+          output: trivy-results.sarif
+          ignore-unfixed: true
+          severity: HIGH
+          vuln-type: os,library
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+# ──────────────────────────────────────────────────────────────────────────────
+# JOB 5 — Helm Lint
 # ──────────────────────────────────────────────────────────────────────────────
   helm-lint:
     name: Helm Lint & Validate
     runs-on: ubuntu-latest
-    needs: build-push
+    needs: trivy-scan                 # only lint if image passed security scan
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
@@ -176,7 +234,7 @@ jobs:
             --debug
 
 # ──────────────────────────────────────────────────────────────────────────────
-# JOB 5 — Deploy to GKE via Helm
+# JOB 6 — Deploy to GKE via Helm
 # ──────────────────────────────────────────────────────────────────────────────
   deploy:
     name: Deploy to GKE (Helm)
@@ -282,7 +340,7 @@ jobs:
             --timeout=300s
 
 # ──────────────────────────────────────────────────────────────────────────────
-# JOB 6 — ArgoCD Sync
+# JOB 7 — ArgoCD Sync
 # ──────────────────────────────────────────────────────────────────────────────
   argocd-sync:
     name: ArgoCD Sync
@@ -317,12 +375,12 @@ jobs:
         run: argocd app get python-app
 
 # ──────────────────────────────────────────────────────────────────────────────
-# JOB 7 — Slack Notification
+# JOB 8 — Slack Notification
 # ──────────────────────────────────────────────────────────────────────────────
   slack-notify:
     name: Slack Notification
     runs-on: ubuntu-latest
-    needs: [test, gitleaks, build-push, helm-lint, deploy, argocd-sync]
+    needs: [test, gitleaks, build-push, trivy-scan, helm-lint, deploy, argocd-sync]
     if: |
       always() &&
       github.ref == 'refs/heads/main' &&
@@ -332,15 +390,20 @@ jobs:
       - name: Determine pipeline status
         id: status
         run: |
-          if [[ "${{ needs.deploy.result }}" == "success" && \
-                "${{ needs.argocd-sync.result }}" == "success" && \
-                "${{ needs.owasp-zap.result }}" != "failure" ]]; then
-            echo "color=#36a64f" >> $GITHUB_OUTPUT
+          # Pipeline succeeds only when every critical job succeeded
+          if [[ "${{ needs.test.result }}"        == "success" && \
+                "${{ needs.gitleaks.result }}"    == "success" && \
+                "${{ needs.build-push.result }}"  == "success" && \
+                "${{ needs.trivy-scan.result }}"  == "success" && \
+                "${{ needs.helm-lint.result }}"   == "success" && \
+                "${{ needs.deploy.result }}"      == "success" && \
+                "${{ needs.argocd-sync.result }}" == "success" ]]; then
+            echo "color=#36a64f"           >> $GITHUB_OUTPUT
             echo "icon=:white_check_mark:" >> $GITHUB_OUTPUT
             echo "text=Pipeline Succeeded" >> $GITHUB_OUTPUT
           else
             echo "color=#e01e5a" >> $GITHUB_OUTPUT
-            echo "icon=:x:" >> $GITHUB_OUTPUT
+            echo "icon=:x:"      >> $GITHUB_OUTPUT
             echo "text=Pipeline Failed" >> $GITHUB_OUTPUT
           fi
 
@@ -370,10 +433,10 @@ jobs:
                         { "type": "mrkdwn", "text": "*Image Tag:*\n${{ needs.build-push.outputs.image_tag }}" },
                         { "type": "mrkdwn", "text": "*Test:*\n${{ needs.test.result || 'skipped' }}" },
                         { "type": "mrkdwn", "text": "*Gitleaks:*\n${{ needs.gitleaks.result || 'skipped' }}" },
+                        { "type": "mrkdwn", "text": "*Trivy Scan:*\n${{ needs.trivy-scan.result || 'skipped' }}" },
                         { "type": "mrkdwn", "text": "*Helm Lint:*\n${{ needs.helm-lint.result || 'skipped' }}" },
                         { "type": "mrkdwn", "text": "*Deploy:*\n${{ needs.deploy.result || 'skipped' }}" },
-                        { "type": "mrkdwn", "text": "*ArgoCD Sync:*\n${{ needs.argocd-sync.result || 'skipped' }}" },
-                        { "type": "mrkdwn", "text": "*OWASP ZAP:*\n${{ needs.owasp-zap.result || 'skipped' }}" }
+                        { "type": "mrkdwn", "text": "*ArgoCD Sync:*\n${{ needs.argocd-sync.result || 'skipped' }}" }
                       ]
                     },
                     {
