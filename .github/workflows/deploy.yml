@@ -385,7 +385,7 @@ jobs:
       always() &&
       github.ref == 'refs/heads/main' &&
       github.event_name == 'push'
-
+ 
     steps:
       - name: Determine pipeline status
         id: status
@@ -406,53 +406,55 @@ jobs:
             echo "icon=:x:"      >> $GITHUB_OUTPUT
             echo "text=Pipeline Failed" >> $GITHUB_OUTPUT
           fi
-
+ 
       - name: Send Slack notification
         uses: slackapi/slack-github-action@v1.27.0
         with:
           payload: |
             {
-              "attachments": [
+              "blocks": [
                 {
-                  "color": "${{ steps.status.outputs.color }}",
-                  "blocks": [
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "${{ steps.status.outputs.icon }} ${{ steps.status.outputs.text }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    { "type": "mrkdwn", "text": "*Repo:*\n${{ github.repository }}" },
+                    { "type": "mrkdwn", "text": "*Branch:*\n${{ github.ref_name }}" },
+                    { "type": "mrkdwn", "text": "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>" },
+                    { "type": "mrkdwn", "text": "*Actor:*\n${{ github.actor }}" },
+                    { "type": "mrkdwn", "text": "*Image Tag:*\n`${{ needs.build-push.outputs.image_tag }}`" }
+                  ]
+                },
+                { "type": "divider" },
+                {
+                  "type": "section",
+                  "fields": [
+                    { "type": "mrkdwn", "text": "*Test:*\n${{ needs.test.result || 'skipped' }}" },
+                    { "type": "mrkdwn", "text": "*Gitleaks:*\n${{ needs.gitleaks.result || 'skipped' }}" },
+                    { "type": "mrkdwn", "text": "*Trivy Scan:*\n${{ needs.trivy-scan.result || 'skipped' }}" },
+                    { "type": "mrkdwn", "text": "*Helm Lint:*\n${{ needs.helm-lint.result || 'skipped' }}" },
+                    { "type": "mrkdwn", "text": "*Deploy:*\n${{ needs.deploy.result || 'skipped' }}" },
+                    { "type": "mrkdwn", "text": "*ArgoCD Sync:*\n${{ needs.argocd-sync.result || 'skipped' }}" }
+                  ]
+                },
+                { "type": "divider" },
+                {
+                  "type": "actions",
+                  "elements": [
                     {
-                      "type": "header",
-                      "text": {
-                        "type": "plain_text",
-                        "text": "${{ steps.status.outputs.icon }} ${{ steps.status.outputs.text }}"
-                      }
+                      "type": "button",
+                      "text": { "type": "plain_text", "text": ":rocket: View Run" },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
                     },
                     {
-                      "type": "section",
-                      "fields": [
-                        { "type": "mrkdwn", "text": "*Repo:*\n${{ github.repository }}" },
-                        { "type": "mrkdwn", "text": "*Branch:*\n${{ github.ref_name }}" },
-                        { "type": "mrkdwn", "text": "*Commit:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>" },
-                        { "type": "mrkdwn", "text": "*Actor:*\n${{ github.actor }}" },
-                        { "type": "mrkdwn", "text": "*Image Tag:*\n${{ needs.build-push.outputs.image_tag }}" },
-                        { "type": "mrkdwn", "text": "*Test:*\n${{ needs.test.result || 'skipped' }}" },
-                        { "type": "mrkdwn", "text": "*Gitleaks:*\n${{ needs.gitleaks.result || 'skipped' }}" },
-                        { "type": "mrkdwn", "text": "*Trivy Scan:*\n${{ needs.trivy-scan.result || 'skipped' }}" },
-                        { "type": "mrkdwn", "text": "*Helm Lint:*\n${{ needs.helm-lint.result || 'skipped' }}" },
-                        { "type": "mrkdwn", "text": "*Deploy:*\n${{ needs.deploy.result || 'skipped' }}" },
-                        { "type": "mrkdwn", "text": "*ArgoCD Sync:*\n${{ needs.argocd-sync.result || 'skipped' }}" }
-                      ]
-                    },
-                    {
-                      "type": "actions",
-                      "elements": [
-                        {
-                          "type": "button",
-                          "text": { "type": "plain_text", "text": ":rocket: View Run" },
-                          "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                        },
-                        {
-                          "type": "button",
-                          "text": { "type": "plain_text", "text": ":globe_with_meridians: Open App" },
-                          "url": "https://devopstrends.online"
-                        }
-                      ]
+                      "type": "button",
+                      "text": { "type": "plain_text", "text": ":globe_with_meridians: Open App" },
+                      "url": "https://devopstrends.online"
                     }
                   ]
                 }
