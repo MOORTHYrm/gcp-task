@@ -18,9 +18,9 @@ env:
   NAMESPACE: default
 
 permissions:
-  contents: write        # needed to push values.yaml image tag update
-  id-token: write        # needed for Workload Identity
-  issues: write          # needed for OWASP ZAP issue creation
+  contents: write
+  id-token: write
+  issues: write
 
 # ──────────────────────────────────────────────────────────────────────────────
 # JOB 1 — Lint & Test
@@ -71,6 +71,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, gitleaks]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+      id-token: write
     outputs:
       image_tag: ${{ steps.meta.outputs.tag }}
       image_full: ${{ steps.meta.outputs.image_full }}
@@ -78,6 +81,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
@@ -119,15 +125,31 @@ jobs:
       - name: Update image tag in values.yaml (GitOps)
         run: |
           SHORT_SHA="${{ steps.meta.outputs.tag }}"
-          sed -i "s/^  tag: .*/  tag: \"${SHORT_SHA}\"/" ${{ env.HELM_CHART_PATH }}/values.yaml
+
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
+
+          # Update the tag in values.yaml
+          sed -i "s/^  tag: .*/  tag: \"${SHORT_SHA}\"/" ${{ env.HELM_CHART_PATH }}/values.yaml
+
+          # Stage the file
           git add ${{ env.HELM_CHART_PATH }}/values.yaml
-          git diff --staged --quiet || git commit -m "ci: update image tag to ${SHORT_SHA} [skip ci]"
-          git push
+
+          # Only proceed if there is a real change
+          if git diff --staged --quiet; then
+            echo "No changes to commit — tag already up to date"
+            exit 0
+          fi
+
+          git commit -m "ci: update image tag to ${SHORT_SHA} [skip ci]"
+
+          # Fetch latest remote, rebase our commit on top, then push
+          git fetch origin main
+          git rebase origin/main
+          git push origin main
 
 # ──────────────────────────────────────────────────────────────────────────────
-# JOB 4 — Helm Lint (validate chart before deploy)
+# JOB 4 — Helm Lint
 # ──────────────────────────────────────────────────────────────────────────────
   helm-lint:
     name: Helm Lint & Validate
@@ -189,6 +211,27 @@ jobs:
         with:
           version: v3.14.0
 
+      - name: Clear stuck Helm release (if any)
+        run: |
+          STATUS=$(helm status python-app -n ${{ env.NAMESPACE }} \
+            --output json 2>/dev/null | \
+            jq -r '.info.status' 2>/dev/null || echo "not-found")
+
+          echo "Current Helm release status: $STATUS"
+
+          if [[ "$STATUS" == "pending-install" || \
+                "$STATUS" == "pending-upgrade" || \
+                "$STATUS" == "pending-rollback" ]]; then
+            echo "Stuck release found — clearing secrets..."
+            kubectl get secret -n ${{ env.NAMESPACE }} \
+              -l name=python-app \
+              -o jsonpath='{.items[-1].metadata.name}' | \
+              xargs kubectl delete secret -n ${{ env.NAMESPACE }} --ignore-not-found
+            echo "Cleared. Proceeding with deploy."
+          else
+            echo "No stuck release. Proceeding normally."
+          fi
+
       - name: Deploy via Helm
         run: |
           IMAGE_TAG="${{ needs.build-push.outputs.image_tag }}"
@@ -198,8 +241,11 @@ jobs:
             --create-namespace \
             --set image.tag=${IMAGE_TAG} \
             --set image.repository=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }} \
+            --set resources.requests.cpu=50m \
+            --set resources.limits.cpu=100m \
+            --set replicaCount=1 \
             --wait \
-            --timeout 5m \
+            --timeout 10m \
             --atomic \
             --history-max 5
 
@@ -236,7 +282,7 @@ jobs:
             --timeout=300s
 
 # ──────────────────────────────────────────────────────────────────────────────
-# JOB 6 — ArgoCD Sync (trigger after Helm deploy)
+# JOB 6 — ArgoCD Sync
 # ──────────────────────────────────────────────────────────────────────────────
   argocd-sync:
     name: ArgoCD Sync
@@ -271,7 +317,7 @@ jobs:
         run: argocd app get python-app
 
 # ──────────────────────────────────────────────────────────────────────────────
-# JOB 7 — OWASP ZAP DAST Security Scan
+# JOB 7 — OWASP ZAP DAST Scan
 # ──────────────────────────────────────────────────────────────────────────────
   owasp-zap:
     name: OWASP ZAP DAST Scan
