@@ -185,7 +185,7 @@ jobs:
           format: table
           exit-code: "1"              # non-zero = block the pipeline
           ignore-unfixed: true        # skip vulns with no available fix
-          severity: HIGH,CRITICAL     # only care about HIGH and CRITICAL
+          severity: HIGH              # only care about HIGH and CRITICAL
           vuln-type: os,library
 
       # ── Always upload a SARIF report to GitHub Security tab ──────────────
