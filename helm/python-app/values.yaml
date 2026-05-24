@@ -1,0 +1,128 @@
+# ──────────────────────────────────────────────
+# Python App
+# ──────────────────────────────────────────────
+nameOverride: ""
+fullnameOverride: "python-app"
+
+namespace: default
+
+replicaCount: 2
+
+image:
+  repository: us-central1-docker.pkg.dev/project-6b73a1f9-ef42-4074-81a/pythontest/python-app
+  tag: "latest"         # overridden by GitHub Actions: --set image.tag=<SHA>
+  pullPolicy: Always
+
+containerPort: 8080
+
+env:
+  ENV: "production"
+
+strategy:
+  maxSurge: 1
+  maxUnavailable: 0
+
+terminationGracePeriodSeconds: 30
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+probes:
+  liveness:
+    path: /health
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    failureThreshold: 3
+  readiness:
+    path: /ready
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    failureThreshold: 3
+
+# ──────────────────────────────────────────────
+# Service
+# ──────────────────────────────────────────────
+service:
+  type: LoadBalancer
+  port: 80
+
+# ──────────────────────────────────────────────
+# GKE BackendConfig
+# ──────────────────────────────────────────────
+backendConfig:
+  healthCheck:
+    checkIntervalSec: 15
+    type: HTTP
+  timeoutSec: 30
+  connectionDraining:
+    drainingTimeoutSec: 60
+
+# ──────────────────────────────────────────────
+# Ingress (python-app)
+# ──────────────────────────────────────────────
+ingress:
+  enabled: true
+  staticIpName: "python-app-lb-ip"   # static IP created by Terraform
+  allowHttp: "false"                  # force HTTPS
+  domains:
+    - devopstrends.online
+    - www.devopstrends.online
+
+# ──────────────────────────────────────────────
+# Monitoring (Grafana ingress + cert)
+# ──────────────────────────────────────────────
+monitoring:
+  namespace: monitoring
+  ingress:
+    enabled: true
+    host: monitor.devopstrends.online
+    class: gce
+    serviceName: monitoring-grafana
+    servicePort: 80
+
+# ──────────────────────────────────────────────
+# kube-prometheus-stack (Grafana / Prometheus)
+# ──────────────────────────────────────────────
+grafana:
+  enabled: true
+  adminUser: admin
+  adminPassword: Admin@123
+  service:
+    type: ClusterIP
+    port: 80
+  grafana.ini:
+    server:
+      domain: monitor.devopstrends.online
+      root_url: http://monitor.devopstrends.online
+  persistence:
+    enabled: true
+    size: 10Gi
+
+prometheus:
+  prometheusSpec:
+    retention: 15d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 20Gi
+
+alertmanager:
+  enabled: true
+
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true
+
+defaultRules:
+  create: true

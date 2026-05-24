@@ -1,0 +1,44 @@
+{{- if .Values.ingress.enabled }}
+# Google Managed SSL Certificate for python-app
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: {{ include "python-app.fullname" . }}-cert
+  namespace: {{ .Values.namespace }}
+spec:
+  domains:
+    {{- range .Values.ingress.domains }}
+    - {{ . }}
+    {{- end }}
+---
+# GKE Ingress (Google Cloud Load Balancer)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "python-app.fullname" . }}-ingress
+  namespace: {{ .Values.namespace }}
+  annotations:
+    kubernetes.io/ingress.global-static-ip-name: {{ .Values.ingress.staticIpName | quote }}
+    networking.gke.io/managed-certificates: {{ include "python-app.fullname" . }}-cert
+    kubernetes.io/ingress.allow-http: {{ .Values.ingress.allowHttp | quote }}
+    beta.cloud.google.com/backend-config: '{"default": "{{ include "python-app.fullname" . }}-backendconfig"}'
+spec:
+  defaultBackend:
+    service:
+      name: {{ include "python-app.fullname" . }}-service
+      port:
+        number: {{ .Values.service.port }}
+  rules:
+    {{- range .Values.ingress.domains }}
+    - host: {{ . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "python-app.fullname" $ }}-service
+                port:
+                  number: {{ $.Values.service.port }}
+    {{- end }}
+{{- end }}

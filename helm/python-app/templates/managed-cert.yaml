@@ -1,0 +1,11 @@
+{{- if .Values.monitoring.ingress.enabled }}
+# Google Managed SSL Certificate for Grafana/monitoring
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: monitor-cert
+  namespace: {{ .Values.monitoring.namespace }}
+spec:
+  domains:
+    - {{ .Values.monitoring.ingress.host }}
+{{- end }}

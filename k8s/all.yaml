@@ -1,0 +1,193 @@
+---
+# Source: python-app/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: python-app-service
+  namespace: default
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+  labels:
+    app: python-app
+spec:
+  type: LoadBalancer
+  selector:
+    app: python-app
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+# Source: python-app/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-app
+  namespace: default
+  labels:
+    app: python-app
+    version: "latest"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: python-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: python-app
+    spec:
+      containers:
+        - name: python-app
+          # IMAGE_PLACEHOLDER — replaced by GitHub Actions
+          image: us-central1-docker.pkg.dev/project-6b73a1f9-ef42-4074-81a/pythontest/python-app:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: ENV
+              value: "production"
+            - name: PORT
+              value: "8080"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+      terminationGracePeriodSeconds: 30
+---
+# Source: python-app/templates/ingress.yaml
+# GKE Ingress (Google Cloud Load Balancer)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: python-app-ingress
+  namespace: default
+  annotations:
+    # Use the static IP created by Terraform
+    kubernetes.io/ingress.global-static-ip-name: "python-app-lb-ip"
+    # Attach the managed TLS certificate
+    networking.gke.io/managed-certificates: "python-app-cert"
+    # Force HTTPS redirect
+    kubernetes.io/ingress.allow-http: "false"
+    # Link BackendConfig for health checks
+    beta.cloud.google.com/backend-config: '{"default": "python-app-backendconfig"}'
+spec:
+  defaultBackend:
+    service:
+      name: python-app-service
+      port:
+        number: 80
+  rules:
+    - host: devopstrends.online
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: python-app-service
+                port:
+                  number: 80
+    - host: www.devopstrends.online
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: python-app-service
+                port:
+                  number: 80
+---
+# Source: python-app/templates/monitor-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+
+metadata:
+  name: monitor-ingress
+  namespace: monitoring
+
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    networking.gke.io/managed-certificates: monitor-cert
+
+spec:
+  ingressClassName: gce
+
+  rules:
+  - host: monitor.devopstrends.online
+
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+
+        backend:
+          service:
+            name: monitoring-grafana
+            port:
+              number: 80
+---
+# Source: python-app/templates/service.yaml
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: python-app-backendconfig
+  namespace: default
+spec:
+  healthCheck:
+    checkIntervalSec: 15
+    port: 8080
+    type: HTTP
+    requestPath: /health
+  timeoutSec: 30
+  connectionDraining:
+    drainingTimeoutSec: 60
+---
+# Source: python-app/templates/ingress.yaml
+# Google Managed SSL Certificate
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: python-app-cert
+  namespace: default
+spec:
+  domains:
+    - devopstrends.online
+    - www.devopstrends.online
+---
+# Source: python-app/templates/managed-cert.yaml
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+
+metadata:
+  name: monitor-cert
+  namespace: monitoring
+
+spec:
+  domains:
+    - monitor.devopstrends.online
