@@ -10,7 +10,7 @@ def home():
         {
             "message": "Welcome to GCP Python App",
             "version": "2.0.0",
-            "environment": os.getenv("ENV", "production"),
+            "environment": os.getenv("ENV", "development"),
         }
     )
 
