@@ -43,7 +43,7 @@ variable "app_name" {
 variable "node_count" {
   description = "Number of nodes per zone in the GKE node pool"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "machine_type" {
@@ -61,7 +61,7 @@ variable "min_node_count" {
 variable "max_node_count" {
   description = "Maximum nodes for autoscaling"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "github_repo" {
