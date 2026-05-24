@@ -43,7 +43,7 @@ variable "app_name" {
 variable "node_count" {
   description = "Number of nodes per zone in the GKE node pool"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "machine_type" {
