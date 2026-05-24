@@ -147,7 +147,6 @@ jobs:
           git fetch origin main
           git rebase origin/main
           git push origin main
-
 # ──────────────────────────────────────────────────────────────────────────────
 # JOB 4 — Trivy Image Scan (HIGH & CRITICAL only)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -160,51 +159,52 @@ jobs:
       contents: read
       id-token: write
       security-events: write   # required to upload SARIF to GitHub Security tab
-
+ 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
+ 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_EMAIL }}
-
+ 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
-
+ 
       - name: Pull image for scanning
         run: docker pull "${{ needs.build-push.outputs.image_full }}"
-
+ 
       # ── Fail the job if any HIGH or CRITICAL CVEs are found ──────────────
       - name: Trivy scan — exit on HIGH/CRITICAL
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ needs.build-push.outputs.image_full }}
           format: table
           exit-code: "1"              # non-zero = block the pipeline
           ignore-unfixed: true        # skip vulns with no available fix
-          severity: HIGH              # only care about HIGH and CRITICAL
+          severity: HIGH,CRITICAL     # only care about HIGH and CRITICAL
           vuln-type: os,library
-
+ 
       # ── Always upload a SARIF report to GitHub Security tab ──────────────
       - name: Trivy scan — SARIF report (always)
         if: always()
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ needs.build-push.outputs.image_full }}
           format: sarif
           output: trivy-results.sarif
           ignore-unfixed: true
-          severity: HIGH
+          severity: HIGH,CRITICAL
           vuln-type: os,library
-
+ 
       - name: Upload SARIF to GitHub Security tab
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
+ 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # JOB 5 — Helm Lint
