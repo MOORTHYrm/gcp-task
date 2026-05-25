@@ -145,7 +145,7 @@
 ### Observability & DNS
 | Tool | Purpose | URL |
 |---|---|---|
-| Grafana | Dashboards | monitor.devopstrends.online |
+| Grafana | Dashboards | monitor.devopstrends.online username: admin pass: Admin@123 |
 | Prometheus | Metrics scraping | Internal |
 | GoDaddy | Domain registrar | — |
 | Cloud DNS | DNS zone management | — |
