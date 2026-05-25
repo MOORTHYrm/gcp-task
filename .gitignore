@@ -1,16 +1,357 @@
-# Terraform
-**/.terraform/*
+# ==============================================================================
+# .gitignore — Python + Terraform + Kubernetes + Docker + CI/CD + OS + IDE
+# ==============================================================================
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SECRETS & CREDENTIALS (NEVER commit these)
+# ──────────────────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example          # allow the example template
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*_rsa
+*_rsa.pub
+*_ed25519
+*_ed25519.pub
+*_ecdsa
+*_ecdsa.pub
+credentials.json
+service-account*.json
+gcp-key*.json
+*-key.json
+*.secret
+secrets/
+.secrets/
+vault-token
+.vault-token
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ENVIRONMENT FILES
+# ──────────────────────────────────────────────────────────────────────────────
+.env.local
+.env.development
+.env.staging
+.env.production
+.env.test
+.envrc                 # direnv
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PYTHON
+# ──────────────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Distribution / packaging
+.Python
+build/
+dist/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+.virtualenv/
+.python-version        # pyenv
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+coverage/
+htmlcov/
+nosetests.xml
+pytest.xml
+test-results/
+.tox/
+.nox/
+
+# Type checkers & linters
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Flask / Django
+instance/
+.webassets-cache
+*.sqlite3
+db.sqlite3
+local_settings.py
+
+# pyinstaller
+*.manifest
+*.spec
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TERRAFORM
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Local state — always use remote backend (GCS)
 *.tfstate
 *.tfstate.*
-crash.log
+*.tfstate.backup
 
-# Terraform plan files
+# Plan files — contain sensitive values in plaintext
 *.tfplan
+tfplan
+*.plan
 
-# Variable files
+# Override files (local dev overrides, never share)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform lock & cache
+.terraform/
+.terraform.lock.hcl
+.terraformrc
+terraform.rc
+
+# Sensitive variable files
 *.tfvars
 *.tfvars.json
+!terraform.tfvars.example   # allow example template
 
-# Sensitive files
-*.pem
-.env
+# Crash logs
+crash.log
+crash.*.log
+
+# CDK for Terraform
+cdktf.json
+cdktf.out/
+imports/
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# KUBERNETES & HELM
+# ──────────────────────────────────────────────────────────────────────────────
+
+# kubeconfig — contains cluster credentials
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+.kube/
+.kubeconfig
+
+# Helm
+*.tgz                  # packaged Helm charts
+charts/*.tgz
+.helm/
+
+# Rendered manifests (generated, not source of truth)
+rendered/
+manifests/rendered/
+
+# Skaffold
+.skaffold/
+
+# Kustomize build output
+kustomize-output/
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DOCKER
+# ──────────────────────────────────────────────────────────────────────────────
+.docker/
+docker-compose.override.yml   # local overrides only
+*.tar                          # exported Docker images
+
+# Docker credential helpers
+.dockerconfigjson
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# GOOGLE CLOUD PLATFORM
+# ──────────────────────────────────────────────────────────────────────────────
+.gcloud/
+gcloud/
+application_default_credentials.json
+*-service-account.json
+*-sa-key.json
+gcp_credentials.json
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CI/CD
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ArgoCD
+argocd-secret.yaml
+argocd-local.yaml
+
+# Pre-commit cache
+.pre-commit-cache/
+
+# Act (local GitHub Actions runner)
+.act/
+
+# Build artefacts
+*.sarif               # keep out of repo (uploaded to GitHub Security tab)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# LOGS & RUNTIME
+# ──────────────────────────────────────────────────────────────────────────────
+*.log
+*.log.*
+logs/
+log/
+*.pid
+*.seed
+*.pid.lock
+pids/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# OS GENERATED
+# ──────────────────────────────────────────────────────────────────────────────
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+Icon?
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.nfs*
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# IDE & EDITORS
+# ──────────────────────────────────────────────────────────────────────────────
+
+# VS Code
+.vscode/
+!.vscode/extensions.json    # allow sharing recommended extensions
+!.vscode/settings.json      # allow sharing project settings
+
+# JetBrains (IntelliJ, PyCharm, GoLand, etc.)
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+.idea_modules/
+
+# Vim / Neovim
+*.swp
+*.swo
+*.swn
+*~
+.netrwhist
+Session.vim
+.nvimrc.local
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Sublime Text
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+*.sublime-workspace
+.sublime-clang-format
+
+# Atom
+.atom/
+
+# Eclipse
+.classpath
+.project
+.settings/
+.loadpath
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MONITORING & OBSERVABILITY
+# ──────────────────────────────────────────────────────────────────────────────
+prometheus-data/
+grafana-data/
+alertmanager-data/
+*.db                   # Prometheus local TSDB
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MISCELLANEOUS
+# ──────────────────────────────────────────────────────────────────────────────
+*.bak
+*.tmp
+*.temp
+*.orig
+*.rej
+*.patch
+*.diff
+tmp/
+temp/
+.cache/
+.history/
+.scratch/
