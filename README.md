@@ -16,7 +16,7 @@
 |---|---|---|
 | 🌍 Application | [https://devopstrends.online](https://devopstrends.online) | Production Flask app |
 | 📊 Monitoring | [https://monitor.devopstrends.online](https://monitor.devopstrends.online) | Grafana / Prometheus |
-| 🔄 GitOps (ArgoCD) | [https://argocd.devopstrends.online](https://argocd.devopstrends.online) | ArgoCD CD dashboard |
+| 🔄 GitOps (ArgoCD) | [http://argocd.devopstrends.online](https://argocd.devopstrends.online) | ArgoCD CD dashboard |
 
 ---
 
