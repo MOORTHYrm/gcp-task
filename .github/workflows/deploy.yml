@@ -342,12 +342,13 @@ jobs:
 # ──────────────────────────────────────────────────────────────────────────────
 # JOB 7 — ArgoCD Sync
 # ──────────────────────────────────────────────────────────────────────────────
+  ────
   argocd-sync:
     name: ArgoCD Sync
     runs-on: ubuntu-latest
     needs: deploy
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
+ 
     steps:
       - name: Install ArgoCD CLI
         run: |
@@ -355,14 +356,28 @@ jobs:
             https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
           chmod +x argocd
           sudo mv argocd /usr/local/bin/
-
+ 
       - name: ArgoCD Login
         run: |
           argocd login ${{ secrets.ARGOCD_SERVER }} \
             --username admin \
             --password ${{ secrets.ARGOCD_PASSWORD }} \
             --insecure
-
+ 
+      # Register repo with PAT — GitHub dropped password auth in 2021.
+      # --upsert makes this idempotent (safe to run every pipeline).
+      - name: Register GitHub repo with PAT in ArgoCD
+        run: |
+          argocd repo add https://github.com/${{ github.repository }} \
+            --username ${{ github.repository_owner }} \
+            --password ${{ secrets.ARGOCD_GITHUB_PAT }} \
+            --upsert \
+            --insecure-skip-server-verification
+ 
+      - name: Verify repo connectivity
+        run: |
+          argocd repo get https://github.com/${{ github.repository }}
+ 
       - name: Sync ArgoCD App
         run: |
           argocd app sync python-app --force
@@ -370,9 +385,10 @@ jobs:
             --sync \
             --health \
             --timeout 300
-
+ 
       - name: ArgoCD App Status
         run: argocd app get python-app
+ 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # JOB 8 — Slack Notification
