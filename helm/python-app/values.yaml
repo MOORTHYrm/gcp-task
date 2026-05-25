@@ -10,7 +10,7 @@ replicaCount: 1
 
 image:
   repository: us-central1-docker.pkg.dev/project-6b73a1f9-ef42-4074-81a/pythontest/python-app
-  tag: "08c15ea"
+  tag: "3ecf11c"
   pullPolicy: Always
 
 containerPort: 8080
